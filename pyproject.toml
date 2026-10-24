@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omnivoice"
+version = "0.1.0"
+description = "Voice Prompting & Dictation for Terminal AI Agents (Antigravity, Claude, Codex, Aider)."
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    { name = "Andrew Bohachov" }
+]
+dependencies = [
+    "numpy>=1.22.0",
+    "faster-whisper>=1.0.0",
+    "SpeechRecognition>=3.10.0",
+    "requests>=2.28.0",
+    "evdev>=1.6.0",
+    "sounddevice>=0.4.6",
+]
+
+[project.scripts]
+omnivoice = "omnivoice.cli:main"
