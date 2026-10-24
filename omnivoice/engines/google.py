@@ -8,6 +8,7 @@ import wave
 import numpy as np
 import speech_recognition as sr
 from .base import BaseEngine
+from ..punctuator import enhance_text
 
 class GoogleSpeechEngine(BaseEngine):
     def __init__(self, language: str = "ru-RU"):
@@ -38,7 +39,7 @@ class GoogleSpeechEngine(BaseEngine):
             audio_data = self.recognizer.record(source)
             try:
                 text = self.recognizer.recognize_google(audio_data, language=self.language)
-                return text.strip()
+                return enhance_text(text.strip())
             except sr.UnknownValueError:
                 return ""
             except Exception as e:

@@ -73,10 +73,14 @@ class PtyWrapper:
                             # Inject recognized text directly into agent prompt
                             os.write(self.master_fd, text.encode("utf-8"))
                             return
-                except Exception:
-                    pass
+                except Exception as e:
+                    cleanup = b"\x1b8\x1b[K\x1b]0;OmniVoice\x07"
+                    os.write(sys.stdout.fileno(), cleanup)
+                    err_msg = f"\r\n\x1b[1;31m{i18n.get('error_transcription', err=e)}\x1b[0m\r\n"
+                    os.write(sys.stdout.fileno(), err_msg.encode("utf-8"))
+                    return
 
-                # If no text recognized or error, clean up indicator
+                # If no text recognized, clean up indicator
                 cleanup = b"\x1b8\x1b[K\x1b]0;OmniVoice\x07"
                 os.write(sys.stdout.fileno(), cleanup)
 
@@ -105,6 +109,15 @@ class PtyWrapper:
         # Start Caps Lock event listener
         self._key_listener = CapsLockListener(on_toggle=self._on_toggle)
         self._key_listener.start()
+
+        # Warm up speech recognition engine in background
+        def warmup():
+            try:
+                if hasattr(self.engine, "_ensure_model_loaded"):
+                    self.engine._ensure_model_loaded()
+            except Exception:
+                pass
+        threading.Thread(target=warmup, daemon=True).start()
 
         # Print initial tip
         sys.stdout.write(f"\x1b[90m{i18n.get('caps_tip')}\x1b[0m\r\n")

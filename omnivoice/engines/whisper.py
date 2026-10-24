@@ -6,6 +6,7 @@ Offline, fast inference with CTranslate2. Supports small, large-v3-turbo, and ba
 import numpy as np
 from typing import Optional
 from .base import BaseEngine
+from ..punctuator import enhance_text
 
 class FasterWhisperEngine(BaseEngine):
     def __init__(self, model_size: str = "small", language: str = "ru"):
@@ -24,18 +25,33 @@ class FasterWhisperEngine(BaseEngine):
             return
 
         from faster_whisper import WhisperModel
-        import shutil
 
-        # Check for CUDA availability
+        device = "cpu"
+        compute_type = "int8"
+
+        # Check for working CUDA environment
         try:
             import ctranslate2
             if ctranslate2.get_cuda_device_count() > 0:
-                self._device = "cuda"
-                self._compute_type = "float16"
+                try:
+                    # Test if CUDA libraries (libcublas.so, libcudnn.so) actually load
+                    test_m = WhisperModel(self.model_size, device="cuda", compute_type="float16")
+                    dummy = np.zeros(16000, dtype=np.float32)
+                    list(test_m.transcribe(dummy, language=self.language)[0])
+                    self._model = test_m
+                    self._device = "cuda"
+                    self._compute_type = "float16"
+                    return
+                except Exception:
+                    # Missing libcublas or CUDA library - fallback to CPU
+                    device = "cpu"
+                    compute_type = "int8"
         except Exception:
-            self._device = "cpu"
-            self._compute_type = "int8"
+            device = "cpu"
+            compute_type = "int8"
 
+        self._device = device
+        self._compute_type = compute_type
         self._model = WhisperModel(
             self.model_size,
             device=self._device,
@@ -48,7 +64,7 @@ class FasterWhisperEngine(BaseEngine):
 
         self._ensure_model_loaded()
 
-        # Resample if not 16000
+        # Resample / ensure float32
         audio_float32 = audio_np.astype(np.float32)
 
         # Transcribe directly from numpy array (bypassing pyav file reader)
@@ -56,8 +72,8 @@ class FasterWhisperEngine(BaseEngine):
             audio_float32,
             language=self.language,
             beam_size=5,
-            vad_filter=True,
+            vad_filter=False,
             initial_prompt="Linux, Git, bash, terminal, Python, Docker, API, FastAPI, Redis, pull request, bugfix, Claude, Antigravity, Codex"
         )
         text = " ".join([seg.text.strip() for seg in segments])
-        return text.strip()
+        return enhance_text(text.strip())
