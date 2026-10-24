@@ -154,5 +154,19 @@ def interactive_setup(lang: Optional[str] = None) -> Dict[str, Any]:
     save_config(cfg)
 
     print(i18n.get("setup_saved", path=str(CONFIG_FILE)))
-    print(f"[OK] Engine active: {chosen_engine}\n")
+    print(f"[OK] Engine selected: {chosen_engine}")
+
+    # On-demand download only for the selected model
+    if chosen_engine.startswith("whisper"):
+        model_name = "small" if "small" in chosen_engine else ("large-v3-turbo" if "turbo" in chosen_engine else "base")
+        print(f"[*] Preparing {chosen_engine} model (downloads only once)...")
+        try:
+            from faster_whisper import download_model
+            download_model(model_name)
+            print(f"[OK] {chosen_engine} is downloaded and ready to use.\n")
+        except Exception as e:
+            print(f"[!] Notice: Model will be loaded on demand: {e}\n")
+    else:
+        print("[OK] Google Speech requires no local downloads. Ready immediately!\n")
+
     return cfg

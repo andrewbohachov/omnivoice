@@ -80,16 +80,6 @@ fi
 "$VENV_DIR/bin/pip" install --quiet --upgrade pip
 "$VENV_DIR/bin/pip" install --quiet -e "$INSTALL_DIR"
 
-# Pre-cache default Whisper Small model
-echo "[*] Pre-caching default Whisper Small model (~480 MB)..."
-"$VENV_DIR/bin/python" -c "
-try:
-    from faster_whisper import WhisperModel
-    WhisperModel('small', device='cpu', compute_type='int8')
-except Exception as e:
-    pass
-" || true
-
 # Create binary launcher wrapper in ~/.local/bin
 cat <<EOF > "$BIN_DIR/omnivoice"
 #!/usr/bin/env bash
