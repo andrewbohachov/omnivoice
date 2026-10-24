@@ -75,5 +75,18 @@ class FasterWhisperEngine(BaseEngine):
             vad_filter=False,
             initial_prompt="Linux, Git, bash, terminal, Python, Docker, API, FastAPI, Redis, pull request, bugfix, Claude, Antigravity, Codex"
         )
-        text = " ".join([seg.text.strip() for seg in segments])
-        return enhance_text(text.strip())
+        # Smart join segments ensuring periods between complete clauses
+        joined = ""
+        for seg in segments:
+            s = seg.text.strip()
+            if not s:
+                continue
+            if not joined:
+                joined = s
+            else:
+                if s and s[0].isupper() and not joined.endswith((".", "!", "?", ":", ";", ",")):
+                    joined += ". " + s
+                else:
+                    joined += " " + s
+
+        return enhance_text(joined.strip())
