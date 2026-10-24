@@ -14,6 +14,7 @@ import signal
 import termios
 import struct
 import select
+import threading
 from typing import List, Optional
 from .audio import AudioRecorder
 from .key_listener import CapsLockListener
@@ -28,6 +29,7 @@ class PtyWrapper:
         self.is_recording = False
         self.master_fd = None
         self._key_listener = None
+        self._lock = threading.Lock()
 
     def _set_window_size(self):
         """Propagates terminal window size to slave PTY."""
@@ -44,30 +46,39 @@ class PtyWrapper:
         if self.master_fd is None:
             return
 
-        if not self.is_recording:
-            # START RECORDING
-            self.is_recording = True
-            self.recorder.start()
-            msg = f"\r\n\x1b[1;33m{i18n.get('listening')}\x1b[0m"
-            os.write(sys.stdout.fileno(), msg.encode("utf-8"))
-        else:
-            # STOP RECORDING & TRANSCRIBE
-            self.is_recording = False
-            msg_tr = f"\r\n\x1b[1;36m{i18n.get('transcribing', engine=self.engine.name)}\x1b[0m\r\n"
-            os.write(sys.stdout.fileno(), msg_tr.encode("utf-8"))
+        with self._lock:
+            if not self.is_recording:
+                # START RECORDING
+                self.is_recording = True
+                self.recorder.start()
+                # Update window title & display subtle inline indicator without line break
+                title_seq = f"\x1b]0;{i18n.get('listening_badge')} OmniVoice - Listening...\x07"
+                inline_seq = f"\x1b7 \x1b[1;33m{i18n.get('listening_badge')}\x1b[0m"
+                os.write(sys.stdout.fileno(), (title_seq + inline_seq).encode("utf-8"))
+            else:
+                # STOP RECORDING & TRANSCRIBE
+                self.is_recording = False
+                title_seq = f"\x1b]0;{i18n.get('transcribing_badge')} OmniVoice - Transcribing...\x07"
+                inline_seq = f"\x1b8\x1b[K\x1b7 \x1b[1;36m{i18n.get('transcribing_badge')}\x1b[0m"
+                os.write(sys.stdout.fileno(), (title_seq + inline_seq).encode("utf-8"))
 
-            audio = self.recorder.stop()
-            if len(audio) > 0:
+                audio = self.recorder.stop()
                 try:
-                    text = self.engine.transcribe(audio, sample_rate=16000)
-                    if text:
-                        # Ingest text directly into child process stdin
-                        os.write(self.master_fd, text.encode("utf-8"))
-                        msg_ok = f"\r\n\x1b[1;32m{i18n.get('injected', count=len(text))}\x1b[0m"
-                        os.write(sys.stdout.fileno(), msg_ok.encode("utf-8"))
-                except Exception as e:
-                    err_msg = f"\r\n\x1b[1;31m{i18n.get('error_transcription', err=e)}\x1b[0m\r\n"
-                    os.write(sys.stdout.fileno(), err_msg.encode("utf-8"))
+                    if len(audio) > 0:
+                        text = self.engine.transcribe(audio, sample_rate=16000)
+                        if text:
+                            # Clean up inline badge and restore title
+                            cleanup = b"\x1b8\x1b[K\x1b]0;OmniVoice\x07"
+                            os.write(sys.stdout.fileno(), cleanup)
+                            # Inject recognized text directly into agent prompt
+                            os.write(self.master_fd, text.encode("utf-8"))
+                            return
+                except Exception:
+                    pass
+
+                # If no text recognized or error, clean up indicator
+                cleanup = b"\x1b8\x1b[K\x1b]0;OmniVoice\x07"
+                os.write(sys.stdout.fileno(), cleanup)
 
     def run(self) -> int:
         pid, self.master_fd = pty.fork()
