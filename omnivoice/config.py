@@ -45,40 +45,57 @@ def is_first_run() -> bool:
 
 def select_with_arrows(title: str, options: list, default_index: int = 0) -> int:
     """
-    Clean, flicker-free terminal arrow-key menu.
-    Uses VT100 save/restore cursor (ESC 7 / ESC 8) and clear-to-bottom (ESC [ J).
-    Also supports number keys (1, 2, 3...) for instant selection.
+    Clean, in-place terminal arrow-key menu.
+    Uses relative cursor movements (ESC [ N A) and line clears (ESC [ 2 K)
+    to overwrite the menu in-place without duplicating lines.
     """
     import termios
     import tty
+    import shutil
 
     selected = default_index
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
 
-    # Hide cursor and save position
-    sys.stdout.write("\x1b[?25l\x1b7")
+    # Hide cursor
+    sys.stdout.write("\x1b[?25l")
     sys.stdout.flush()
 
-    def draw_menu():
-        # Restore cursor and clear to end of screen
-        sys.stdout.write("\x1b8\x1b[J")
-        sys.stdout.write(f"\r\n\x1b[1;37m{title}\x1b[0m\r\n\r\n")
+    first_draw = True
+    rendered_line_count = 0
+
+    def draw():
+        nonlocal first_draw, rendered_line_count
+
+        lines = [
+            f"\x1b[1;37m{title}\x1b[0m",
+            ""
+        ]
         for i, opt in enumerate(options):
-            if i == selected:
-                sys.stdout.write(f"  \x1b[1;36m[●] {opt}\x1b[0m\r\n")
-            else:
-                sys.stdout.write(f"  \x1b[90m[ ] {opt}\x1b[0m\r\n")
-        sys.stdout.write("\r\n\x1b[90m(Use [Up/Down] arrows, [j/k], or [1-9] to choose, [Enter] to confirm)\x1b[0m\r\n")
+            marker = "[●]" if i == selected else "[ ]"
+            color = "\x1b[1;36m" if i == selected else "\x1b[90m"
+            lines.append(f"  {color}{marker} {opt}\x1b[0m")
+        lines.append("")
+        lines.append("\x1b[90m(Use [Up/Down] arrows, [j/k], or [1-9] to choose, [Enter] to confirm)\x1b[0m")
+
+        # If not the first render, move cursor back up to the top of the menu
+        if not first_draw and rendered_line_count > 0:
+            sys.stdout.write(f"\x1b[{rendered_line_count}A\r")
+
+        # Overwrite each line cleanly
+        for l in lines:
+            sys.stdout.write(f"\x1b[2K\r{l}\n")
         sys.stdout.flush()
+
+        rendered_line_count = len(lines)
+        first_draw = False
 
     try:
         tty.setraw(fd)
-        draw_menu()
+        draw()
         while True:
             char = sys.stdin.read(1)
             if char == '\x1b':
-                # Check for escape sequence
                 next1 = sys.stdin.read(1)
                 if next1 == '[':
                     next2 = sys.stdin.read(1)
@@ -101,8 +118,8 @@ def select_with_arrows(title: str, options: list, default_index: int = 0) -> int
                 sys.stdout.flush()
                 termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
                 sys.exit(0)
-            
-            draw_menu()
+
+            draw()
     finally:
         sys.stdout.write("\x1b[?25h\r\n")
         sys.stdout.flush()
