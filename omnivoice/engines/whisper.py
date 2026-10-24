@@ -73,7 +73,7 @@ class FasterWhisperEngine(BaseEngine):
             language=self.language,
             beam_size=5,
             vad_filter=False,
-            initial_prompt="Linux, Git, bash, terminal, Python, Docker, API, FastAPI, Redis, pull request, bugfix, Claude, Antigravity, Codex"
+            initial_prompt="Unix, Linux, macOS, Windows, Git, GitHub, Pull Request, Push-to-Talk, bash, Python, Docker, Kubernetes, API, REST, JSON, Claude, Antigravity, Codex, Aider, Cursor, LLM, bugfix, deploy"
         )
         # Smart join segments ensuring periods between complete clauses
         joined = ""
