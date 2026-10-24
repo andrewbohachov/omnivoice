@@ -45,7 +45,9 @@ def is_first_run() -> bool:
 
 def select_with_arrows(title: str, options: list, default_index: int = 0) -> int:
     """
-    Simple, pure-Python terminal arrow-key menu without heavy external dependencies.
+    Clean, flicker-free terminal arrow-key menu.
+    Uses VT100 save/restore cursor (ESC 7 / ESC 8) and clear-to-bottom (ESC [ J).
+    Also supports number keys (1, 2, 3...) for instant selection.
     """
     import termios
     import tty
@@ -54,15 +56,20 @@ def select_with_arrows(title: str, options: list, default_index: int = 0) -> int
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
 
+    # Hide cursor and save position
+    sys.stdout.write("\x1b[?25l\x1b7")
+    sys.stdout.flush()
+
     def draw_menu():
-        # Clear lines
-        sys.stdout.write("\r\x1b[K")
-        sys.stdout.write(f"\n{title}\n\n")
+        # Restore cursor and clear to end of screen
+        sys.stdout.write("\x1b8\x1b[J")
+        sys.stdout.write(f"\r\n\x1b[1;37m{title}\x1b[0m\r\n\r\n")
         for i, opt in enumerate(options):
-            marker = "[●]" if i == selected else "[ ]"
-            color = "\x1b[36m" if i == selected else "\x1b[90m"
-            sys.stdout.write(f"  {color}{marker} {opt}\x1b[0m\n")
-        sys.stdout.write("\nUse [Up/Down] arrows to choose, [Enter] to confirm.\n")
+            if i == selected:
+                sys.stdout.write(f"  \x1b[1;36m[●] {opt}\x1b[0m\r\n")
+            else:
+                sys.stdout.write(f"  \x1b[90m[ ] {opt}\x1b[0m\r\n")
+        sys.stdout.write("\r\n\x1b[90m(Use [Up/Down] arrows, [j/k], or [1-9] to choose, [Enter] to confirm)\x1b[0m\r\n")
         sys.stdout.flush()
 
     try:
@@ -71,7 +78,7 @@ def select_with_arrows(title: str, options: list, default_index: int = 0) -> int
         while True:
             char = sys.stdin.read(1)
             if char == '\x1b':
-                # Escape sequence
+                # Check for escape sequence
                 next1 = sys.stdin.read(1)
                 if next1 == '[':
                     next2 = sys.stdin.read(1)
@@ -79,18 +86,27 @@ def select_with_arrows(title: str, options: list, default_index: int = 0) -> int
                         selected = (selected - 1) % len(options)
                     elif next2 == 'B':  # Down
                         selected = (selected + 1) % len(options)
-            elif char in ('\r', '\n'):
+            elif char in ('k', 'K'):  # Vim up
+                selected = (selected - 1) % len(options)
+            elif char in ('j', 'J'):  # Vim down
+                selected = (selected + 1) % len(options)
+            elif char.isdigit():
+                num = int(char)
+                if 1 <= num <= len(options):
+                    selected = num - 1
+            elif char in ('\r', '\n', ' '):
                 break
             elif char == '\x03':  # Ctrl+C
+                sys.stdout.write("\x1b[?25h\r\n")
+                sys.stdout.flush()
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
                 sys.exit(0)
             
-            # Redraw
-            lines_to_clear = len(options) + 5
-            sys.stdout.write(f"\x1b[{lines_to_clear}A")
             draw_menu()
     finally:
+        sys.stdout.write("\x1b[?25h\r\n")
+        sys.stdout.flush()
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-        print()
 
     return selected
 
@@ -105,9 +121,9 @@ def interactive_setup(lang: Optional[str] = None) -> Dict[str, Any]:
     print("==========================================================")
 
     options = [
-        "Whisper Small (Recommended) - ~480 MB, 100% offline, balanced speed & code accuracy",
-        "Google Speech - 0 MB download, fast cloud API, zero RAM usage",
-        "Whisper Turbo (Large-v3) - ~1.6 GB, maximum accuracy for high-end PCs"
+        "Whisper Small (Recommended) [~480 MB, 100% offline, balanced]",
+        "Google Speech                [0 MB download, fast cloud API]",
+        "Whisper Turbo (Large-v3)     [~1.6 GB, maximum accuracy]"
     ]
     engine_keys = ["whisper-small", "google", "whisper-turbo"]
 
@@ -121,5 +137,5 @@ def interactive_setup(lang: Optional[str] = None) -> Dict[str, Any]:
     save_config(cfg)
 
     print(i18n.get("setup_saved", path=str(CONFIG_FILE)))
-    print(f"Engine selected: {chosen_engine}\n")
+    print(f"[OK] Engine active: {chosen_engine}\n")
     return cfg
